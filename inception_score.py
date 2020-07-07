@@ -1,3 +1,5 @@
+import argparse
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -86,13 +88,16 @@ def inception_score(imgs, batch_size=32, resize=False, splits=1):
 
 
 if __name__ == '__main__':
-    cifar = dset.CIFAR10(root='data/', download=True,
-                         transform=transforms.Compose([
-                             transforms.Resize(32),
-                             transforms.ToTensor(),
-                             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-                         ])
-                         )
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataroot", type=str, default="./data", help="Root directory for dataset")
+    opt = parser.parse_args()
+
+    dataset = dset.ImageFolder(root=opt.dataroot,
+                               transform=transforms.Compose([
+                                   # transforms.Resize(64),
+                                   transforms.ToTensor(),
+                                   transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                               ]))
 
     print("Calculating Inception Score...")
-    print(inception_score(IgnoreLabelDataset(cifar), batch_size=32, resize=True, splits=10))
+    print(inception_score(IgnoreLabelDataset(dataset), batch_size=32, resize=True, splits=10))
