@@ -1,6 +1,5 @@
 import torch
 from torch import nn
-from torch.autograd import Variable
 from torch.nn import functional as F
 import torch.utils.data
 
@@ -33,7 +32,7 @@ def get_pred(x, resize, up, inception_model):
     return F.softmax(x, dim=1).data.cpu().numpy()
 
 
-def inception_score(imgs, cuda=True, batch_size=32, resize=False, splits=1):
+def inception_score(imgs, batch_size=32, resize=False, splits=1):
     """Computes the inception score of the generated images imgs
     imgs -- Torch dataset of (3xHxW) numpy images normalized in the range [-1, 1]
     cuda -- whether or not to run on GPU
@@ -45,32 +44,29 @@ def inception_score(imgs, cuda=True, batch_size=32, resize=False, splits=1):
     assert batch_size > 0
     assert N > batch_size
 
-    # Set up dtype
-    if cuda:
-        dtype = torch.cuda.FloatTensor
-    else:
-        if torch.cuda.is_available():
-            print("WARNING: You have a CUDA device, so you should probably set cuda=True")
-        dtype = torch.FloatTensor
+    # Set up device
+    device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 
     # Set up dataloader
     dataloader = torch.utils.data.DataLoader(imgs, batch_size=batch_size)
 
     # Load inception model
-    inception_model = inception_v3(pretrained=True, transform_input=False).type(dtype)
+    inception_model = inception_v3(pretrained=True, transform_input=False).to(device)
     inception_model.eval()
-    up = nn.Upsample(size=(299, 299), mode='bilinear').type(dtype)
+    up = nn.Upsample(size=(299, 299), mode='bilinear').to(device)
 
     # Get predictions
     preds = np.zeros((N, 1000))
 
     for i, batch in enumerate(dataloader, 0):
-        batch = batch.type(dtype)
-        batchv = Variable(batch)
         batch_size_i = batch.size()[0]
 
         with torch.no_grad():
-            preds[i * batch_size:i * batch_size + batch_size_i] = get_pred(batchv, resize, up, inception_model)
+            preds[i * batch_size:i * batch_size + batch_size_i] = get_pred(batch.to(device), resize, up, inception_model)
+
+        print(i+1, "/", len(dataloader), end="\r")
+
+    print("\nComputing KL-Div Mean...")
 
     # Now compute the mean kl-div
     split_scores = []
@@ -84,6 +80,8 @@ def inception_score(imgs, cuda=True, batch_size=32, resize=False, splits=1):
             scores.append(entropy(pyx, py))
         split_scores.append(np.exp(np.mean(scores)))
 
+        print(k+1, "/", splits, end="\r")
+    print()
     return np.mean(split_scores), np.std(split_scores)
 
 
@@ -96,7 +94,5 @@ if __name__ == '__main__':
                          ])
                          )
 
-    IgnoreLabelDataset(cifar)
-
     print("Calculating Inception Score...")
-    print(inception_score(IgnoreLabelDataset(cifar), cuda=True, batch_size=32, resize=True, splits=10))
+    print(inception_score(IgnoreLabelDataset(cifar), batch_size=32, resize=True, splits=10))
