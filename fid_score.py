@@ -12,6 +12,8 @@ from tqdm import tqdm
 
 from inception import InceptionV3
 
+import pandas as pd
+
 import pdb
 
 
@@ -181,17 +183,50 @@ def calculate_fid_given_paths(paths, batch_size, cuda, dims):
     return fid_value
 
 
+def calculate_fid_multiple_gen_dir(paths, batch_size, cuda, dims):
+    """Calculates the FID of multiple generated dirs"""
+    for p in paths:
+        if not os.path.exists(p):
+            raise RuntimeError('Invalid path: %s' % p)
+
+    block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[dims]
+
+    model = InceptionV3([block_idx])
+    if cuda:
+        model.cuda()
+
+    m1, s1 = _compute_statistics_of_path(paths[0], model, batch_size, dims, cuda)
+
+    gen_dir = os.listdir(args.path[1])
+    gen_path = args.path[1]
+    fid_list = []
+    for i, dir in enumerate(gen_dir):
+        args.path[1] = os.path.join(gen_path, dir)
+        m2, s2 = _compute_statistics_of_path(paths[1], model, batch_size, dims, cuda)
+        fid_value = calculate_frechet_distance(m1, s1, m2, s2)
+        print(i+1, len(gen_dir), 'FID: ', fid_value)
+
+        fid_list.append((dir, fid_value))
+    log_df = pd.DataFrame(fid_list, columns=['epoch', 'FID'])
+    log_df.to_csv("%s/fid.csv" % gen_path)
+
+
 if __name__ == '__main__':
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('path', type=str, nargs=2,
                         help='Path to the generated images or to .npz statistic files')
-    parser.add_argument('--batch-size', type=int, default=50, help='Batch size to use')
+    parser.add_argument('--batch-size', type=int, default=64, help='Batch size to use')
     parser.add_argument('--dims', type=int, default=2048, choices=list(InceptionV3.BLOCK_INDEX_BY_DIM),
                         help='Dimensionality of Inception features to use. By default, uses pool3 features')
     parser.add_argument('-c', '--gpu', default='', type=str, help='GPU to use (leave blank for CPU only)')
+    parser.add_argument('--multiple_gen_dir', action='store_true', help="Calculate FID on multiple generated folders. "
+                                                                       "Use this to pick the best epoch.")
     args = parser.parse_args()
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    fid_value = calculate_fid_given_paths(args.path, args.batch_size, args.gpu != '', args.dims)
-    print('FID: ', fid_value)
+    if args.multiple_gen_dir:
+        calculate_fid_multiple_gen_dir(args.path, args.batch_size, args.gpu != '', args.dims)
+    else:
+        fid_value = calculate_fid_given_paths(args.path, args.batch_size, args.gpu != '', args.dims)
+        print('FID: ', fid_value)
