@@ -47,4 +47,4 @@ path
                         └── 1.jpg
 ```
 
-IS code is derived from [mseitzer](https://github.com/mseitzer/pytorch-fid)
+FID code is derived from [mseitzer](https://github.com/mseitzer/pytorch-fid)
